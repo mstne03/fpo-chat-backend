@@ -9,6 +9,8 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from firebase_admin import auth, credentials
 from rooms import RoomManager
+from claude_bot import handle_claude
+from rooms import append_history
 
 load_dotenv()
 
@@ -147,16 +149,22 @@ async def chat_endpoint(websocket: WebSocket, room_id: str, token: str | None = 
                 continue
             if not isinstance(payload, dict):
                 continue
+            text = payload.get("text", "")
+            timestamp = payload.get("timestamp", "")
             message = json.dumps({
+                "type": "message",
                 "uid": uid,
                 "email": email,
-                "text": payload.get("text", ""),
-                "timestamp": payload.get("timestamp", ""),
+                "text": text,
+                "timestamp": timestamp,
             })
             await asyncio.gather(
                 *[c.websocket.send_text(message) for c in room.connections],
                 return_exceptions=True,
             )
+            append_history(room, uid, email, text)
+            if uid != "claude" and "@claude" in text.lower():
+                asyncio.create_task(handle_claude(room))
     except WebSocketDisconnect:
         pass
     finally:
