@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from firebase_admin import auth, credentials
+from rooms import RoomManager
 
 load_dotenv()
 
@@ -49,9 +50,6 @@ app.add_middleware(
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
-
-
-from rooms import RoomManager
 
 
 @dataclass
@@ -107,11 +105,14 @@ async def control_endpoint(websocket: WebSocket, token: str | None = None):
             elif msg.get("type") == "delete_room":
                 room = manager.delete_room(msg.get("roomId", ""))
                 if room is not None:
-                    for c in list(room.connections):
-                        await c.websocket.close(code=4001)
+                    await asyncio.gather(
+                        *[c.websocket.close(code=4001) for c in list(room.connections)],
+                        return_exceptions=True,
+                    )
                     await _broadcast_control()
     except WebSocketDisconnect:
-        manager.control_connections.remove(conn)
+        if conn in manager.control_connections:
+            manager.control_connections.remove(conn)
 
 
 @app.websocket("/ws/chat/{room_id}")
