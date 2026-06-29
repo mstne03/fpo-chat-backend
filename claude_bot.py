@@ -1,3 +1,5 @@
+import asyncio
+import json
 import os
 import uuid
 
@@ -24,20 +26,12 @@ def _history_to_anthropic(history: list[dict]) -> list[dict]:
         else:
             messages.append({"role": "user", "content": f"{entry['email']}: {entry['text']}"})
     # La API de Anthropic requiere que el primer mensaje sea de rol "user".
-    # Solo eliminamos turnos de asistente iniciales si queda al menos un mensaje
-    # de usuario después, para no devolver una lista vacía cuando el historial
-    # solo contiene mensajes de Claude.
-    has_user = any(m["role"] == "user" for m in messages)
-    if has_user:
-        while messages and messages[0]["role"] == "assistant":
-            messages.pop(0)
+    while messages and messages[0]["role"] == "assistant":
+        messages.pop(0)
     return messages
 
 
 async def _broadcast_room(room: Room, payload: dict) -> None:
-    import asyncio
-    import json
-
     text = json.dumps(payload)
     await asyncio.gather(
         *[c.websocket.send_text(text) for c in room.connections],

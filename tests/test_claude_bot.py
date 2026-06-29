@@ -1,4 +1,3 @@
-import pytest
 from claude_bot import _history_to_anthropic
 
 
@@ -12,10 +11,10 @@ def test_user_message_becomes_user_turn():
     assert result == [{"role": "user", "content": "alice@x.com: hola"}]
 
 
-def test_claude_message_becomes_assistant_turn():
+def test_claude_only_history_returns_empty():
     history = [{"uid": "claude", "email": "Claude", "text": "¡Hola!"}]
     result = _history_to_anthropic(history)
-    assert result == [{"role": "assistant", "content": "¡Hola!"}]
+    assert result == []
 
 
 def test_leading_assistant_turns_are_dropped():
