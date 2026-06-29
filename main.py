@@ -96,7 +96,12 @@ async def control_endpoint(websocket: WebSocket, token: str | None = None):
     try:
         while True:
             data = await websocket.receive_text()
-            msg = json.loads(data)
+            try:
+                msg = json.loads(data)
+            except (json.JSONDecodeError, ValueError):
+                continue
+            if not isinstance(msg, dict):
+                continue
             if msg.get("type") == "create_room":
                 name = (msg.get("name") or "").strip()
                 if name:
@@ -111,6 +116,8 @@ async def control_endpoint(websocket: WebSocket, token: str | None = None):
                     )
                     await _broadcast_control()
     except WebSocketDisconnect:
+        pass
+    finally:
         if conn in manager.control_connections:
             manager.control_connections.remove(conn)
 
@@ -134,7 +141,12 @@ async def chat_endpoint(websocket: WebSocket, room_id: str, token: str | None = 
     try:
         while True:
             data = await websocket.receive_text()
-            payload = json.loads(data)
+            try:
+                payload = json.loads(data)
+            except (json.JSONDecodeError, ValueError):
+                continue
+            if not isinstance(payload, dict):
+                continue
             message = json.dumps({
                 "uid": uid,
                 "email": email,
@@ -146,6 +158,8 @@ async def chat_endpoint(websocket: WebSocket, room_id: str, token: str | None = 
                 return_exceptions=True,
             )
     except WebSocketDisconnect:
+        pass
+    finally:
         if conn in room.connections:
             room.connections.remove(conn)
         await _broadcast_control()
