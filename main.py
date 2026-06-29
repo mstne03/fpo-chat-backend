@@ -51,49 +51,85 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+from rooms import RoomManager
+
+
 @dataclass
 class Connection:
     websocket: WebSocket
     uid: str
+    email: str
 
 
-class ConnectionManager:
-    def __init__(self):
-        self.active_connections: list[Connection] = []
-
-    def connect(self, websocket: WebSocket, uid: str):
-        self.active_connections.append(Connection(websocket=websocket, uid=uid))
-
-    def disconnect(self, websocket: WebSocket):
-        self.active_connections = [
-            c for c in self.active_connections if c.websocket is not websocket
-        ]
-
-    async def broadcast(self, message: str):
-        await asyncio.gather(
-            *[c.websocket.send_text(message) for c in self.active_connections],
-            return_exceptions=True,
-        )
+manager = RoomManager()
 
 
-manager = ConnectionManager()
-
-
-@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket, token: str | None = None):
+def _verify(token: str | None) -> dict | None:
     if not token:
-        await websocket.close(code=1008)
-        return
+        return None
     try:
-        decoded = auth.verify_id_token(token)
+        return auth.verify_id_token(token)
     except Exception:
+        return None
+
+
+async def _broadcast_control() -> None:
+    payload = json.dumps({"type": "room_update", "rooms": manager.snapshot()})
+    await asyncio.gather(
+        *[c.websocket.send_text(payload) for c in manager.control_connections],
+        return_exceptions=True,
+    )
+
+
+@app.websocket("/ws/control")
+async def control_endpoint(websocket: WebSocket, token: str | None = None):
+    decoded = _verify(token)
+    if decoded is None:
         await websocket.close(code=1008)
         return
-
     uid = decoded["uid"]
     email = decoded.get("email", uid)
     await websocket.accept()
-    manager.connect(websocket, uid)
+    conn = Connection(websocket=websocket, uid=uid, email=email)
+    manager.control_connections.append(conn)
+    await websocket.send_text(
+        json.dumps({"type": "room_list", "rooms": manager.snapshot()})
+    )
+    try:
+        while True:
+            data = await websocket.receive_text()
+            msg = json.loads(data)
+            if msg.get("type") == "create_room":
+                name = (msg.get("name") or "").strip()
+                if name:
+                    manager.create_room(name, uid)
+                    await _broadcast_control()
+            elif msg.get("type") == "delete_room":
+                room = manager.delete_room(msg.get("roomId", ""))
+                if room is not None:
+                    for c in list(room.connections):
+                        await c.websocket.close(code=4001)
+                    await _broadcast_control()
+    except WebSocketDisconnect:
+        manager.control_connections.remove(conn)
+
+
+@app.websocket("/ws/chat/{room_id}")
+async def chat_endpoint(websocket: WebSocket, room_id: str, token: str | None = None):
+    decoded = _verify(token)
+    if decoded is None:
+        await websocket.close(code=1008)
+        return
+    room = manager.get_room(room_id)
+    if room is None:
+        await websocket.close(code=4004)
+        return
+    uid = decoded["uid"]
+    email = decoded.get("email", uid)
+    await websocket.accept()
+    conn = Connection(websocket=websocket, uid=uid, email=email)
+    room.connections.append(conn)
+    await _broadcast_control()
     try:
         while True:
             data = await websocket.receive_text()
@@ -104,6 +140,11 @@ async def websocket_endpoint(websocket: WebSocket, token: str | None = None):
                 "text": payload.get("text", ""),
                 "timestamp": payload.get("timestamp", ""),
             })
-            await manager.broadcast(message)
+            await asyncio.gather(
+                *[c.websocket.send_text(message) for c in room.connections],
+                return_exceptions=True,
+            )
     except WebSocketDisconnect:
-        manager.disconnect(websocket)
+        if conn in room.connections:
+            room.connections.remove(conn)
+        await _broadcast_control()
