@@ -1,6 +1,8 @@
 from dataclasses import dataclass, field
 from uuid import uuid4
 
+HISTORY_LIMIT = 20
+
 
 @dataclass
 class Room:
@@ -8,6 +10,7 @@ class Room:
     name: str
     creator_uid: str
     connections: list = field(default_factory=list)
+    history: list[dict] = field(default_factory=list)
 
 
 class RoomManager:
@@ -36,3 +39,9 @@ class RoomManager:
             }
             for r in self.rooms.values()
         ]
+
+
+def append_history(room: Room, uid: str, email: str, text: str) -> None:
+    room.history.append({"uid": uid, "email": email, "text": text})
+    if len(room.history) > HISTORY_LIMIT:
+        del room.history[0]
