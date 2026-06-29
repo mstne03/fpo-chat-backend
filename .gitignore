@@ -1,0 +1,17 @@
+# Entorno virtual
+.myvenv/
+venv/
+__pycache__/
+**/__pycache__/
+*.pyc
+
+# Variables de entorno
+.env
+
+# Secreto de Firebase (NUNCA commitear)
+secrets/service_account.json
+**/service_account.json
+
+# OS
+.DS_Store
+Thumbs.db

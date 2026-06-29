@@ -1,0 +1,16 @@
+services:
+  # Backend: FastAPI + WebSockets
+  - type: web
+    name: fpo-chat-backend
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      # Pega aquí el contenido COMPLETO de service_account.json (en una sola línea).
+      - key: FIREBASE_CREDENTIALS_JSON
+        sync: false
+      # URL del frontend desplegado (coma-separado si hay varias).
+      - key: ALLOWED_ORIGINS
+        sync: false
