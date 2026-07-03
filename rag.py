@@ -100,6 +100,29 @@ def index_pdf(room_id: str, filename: str, pdf_bytes: bytes) -> dict:
     return {"doc_id": doc_id, "filename": filename, "chunks": len(points)}
 
 
+def list_documents(room_id: str) -> list[dict]:
+    room_filter = Filter(
+        must=[FieldCondition(key="room_id", match=MatchValue(value=room_id))]
+    )
+    seen = {}
+    offset = None
+    while True:
+        points, offset = _qdrant().scroll(
+            collection_name=COLLECTION,
+            scroll_filter=room_filter,
+            with_payload=True,
+            limit=100,
+            offset=offset,
+        )
+        for p in points:
+            doc_id = p.payload["doc_id"]
+            if doc_id not in seen:
+                seen[doc_id] = {"doc_id": doc_id, "filename": p.payload["filename"]}
+        if offset is None:
+            break
+    return list(seen.values())
+
+
 def retrieve(room_id: str, query: str, k: int = 5) -> list[dict]:
     try:
         vector = _embed([query])[0]

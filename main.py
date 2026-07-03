@@ -5,9 +5,10 @@ from dataclasses import dataclass
 
 import firebase_admin
 from dotenv import load_dotenv
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from firebase_admin import auth, credentials
+import rag
 from rooms import RoomManager
 from claude_bot import handle_claude
 from rooms import append_history
@@ -52,6 +53,35 @@ app.add_middleware(
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+MAX_PDF_BYTES = 20 * 1024 * 1024
+
+
+@app.post("/rooms/{room_id}/documents")
+async def upload_document(room_id: str, token: str | None = None, file: UploadFile = File(...)):
+    if _verify(token) is None:
+        raise HTTPException(status_code=401, detail="Token inválido")
+    if manager.get_room(room_id) is None:
+        raise HTTPException(status_code=404, detail="Sala inexistente")
+    data = await file.read()
+    if len(data) > MAX_PDF_BYTES:
+        raise HTTPException(status_code=413, detail="PDF demasiado grande (máx. 20 MB)")
+    try:
+        return rag.index_pdf(room_id, file.filename or "documento.pdf", data)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=502, detail="Fallo al indexar el documento")
+
+
+@app.get("/rooms/{room_id}/documents")
+async def get_documents(room_id: str, token: str | None = None):
+    if _verify(token) is None:
+        raise HTTPException(status_code=401, detail="Token inválido")
+    if manager.get_room(room_id) is None:
+        raise HTTPException(status_code=404, detail="Sala inexistente")
+    return {"documents": rag.list_documents(room_id)}
 
 
 @dataclass
@@ -164,7 +194,8 @@ async def chat_endpoint(websocket: WebSocket, room_id: str, token: str | None = 
             )
             append_history(room, uid, email, text)
             if uid != "claude" and "@claude" in text.lower():
-                asyncio.create_task(handle_claude(room))
+                chunks = rag.retrieve(room_id, text)
+                asyncio.create_task(handle_claude(room, chunks))
     except WebSocketDisconnect:
         pass
     finally:

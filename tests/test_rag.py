@@ -113,6 +113,24 @@ def test_retrieve_filters_by_room_and_maps_payload():
     assert called.kwargs["query_filter"] is not None
 
 
+def test_list_documents_dedupes_and_paginates():
+    p1 = MagicMock()
+    p1.payload = {"doc_id": "d1", "filename": "a.pdf"}
+    p2 = MagicMock()
+    p2.payload = {"doc_id": "d1", "filename": "a.pdf"}
+    p3 = MagicMock()
+    p3.payload = {"doc_id": "d2", "filename": "b.pdf"}
+    fake_q = MagicMock()
+    fake_q.scroll.side_effect = [([p1, p2], "next"), ([p3], None)]
+    with patch("rag._qdrant", return_value=fake_q):
+        from rag import list_documents
+        docs = list_documents("room-1")
+    assert docs == [
+        {"doc_id": "d1", "filename": "a.pdf"},
+        {"doc_id": "d2", "filename": "b.pdf"},
+    ]
+
+
 def test_retrieve_degrades_to_empty_on_error():
     with patch("rag._embed", side_effect=RuntimeError("embeddings caídos")):
         from rag import retrieve
