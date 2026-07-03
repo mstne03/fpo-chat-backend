@@ -1,4 +1,23 @@
-from rag import _chunk
+import io
+import pytest
+from pypdf import PdfWriter
+
+from rag import _chunk, _extract_pages
+
+
+def _make_pdf(num_pages: int) -> bytes:
+    # PdfWriter genera páginas en blanco (sin texto extraíble).
+    writer = PdfWriter()
+    for _ in range(num_pages):
+        writer.add_blank_page(width=200, height=200)
+    buf = io.BytesIO()
+    writer.write(buf)
+    return buf.getvalue()
+
+
+def test_blank_pdf_raises():
+    with pytest.raises(ValueError, match="sin texto"):
+        _extract_pages(_make_pdf(2))
 
 
 def test_short_text_single_chunk():

@@ -49,3 +49,4 @@ watchfiles==1.2.0
 websockets==16.0
 pytest==8.3.4
 anthropic==0.112.0
+pypdf==5.1.0
