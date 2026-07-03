@@ -48,3 +48,21 @@ def test_embed_calls_gemini_and_returns_vectors():
         from rag import _embed
         vectors = _embed(["uno", "dos"])
     assert vectors == [[0.1, 0.2], [0.3, 0.4]]
+
+
+def test_ensure_collection_creates_when_missing():
+    fake = MagicMock()
+    fake.collection_exists.return_value = False
+    with patch("rag._qdrant", return_value=fake):
+        from rag import ensure_collection
+        ensure_collection()
+    fake.create_collection.assert_called_once()
+
+
+def test_ensure_collection_skips_when_present():
+    fake = MagicMock()
+    fake.collection_exists.return_value = True
+    with patch("rag._qdrant", return_value=fake):
+        from rag import ensure_collection
+        ensure_collection()
+    fake.create_collection.assert_not_called()

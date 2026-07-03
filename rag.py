@@ -3,8 +3,12 @@ import os
 
 from pypdf import PdfReader
 from google import genai
+from qdrant_client import QdrantClient
+from qdrant_client.models import Distance, VectorParams
 
 EMBED_MODEL = "text-embedding-004"
+COLLECTION = "fpo_documents"
+VECTOR_SIZE = 768
 
 _client_cache = {}
 
@@ -43,3 +47,21 @@ def _chunk(text: str, size: int = 1000, overlap: int = 150) -> list[str]:
         if start + size >= len(text):
             break
     return chunks
+
+
+def _qdrant() -> QdrantClient:
+    if "q" not in _client_cache:
+        _client_cache["q"] = QdrantClient(
+            url=os.environ["QDRANT_URL"],
+            api_key=os.environ.get("QDRANT_API_KEY"),
+        )
+    return _client_cache["q"]
+
+
+def ensure_collection() -> None:
+    client = _qdrant()
+    if not client.collection_exists(COLLECTION):
+        client.create_collection(
+            collection_name=COLLECTION,
+            vectors_config=VectorParams(size=VECTOR_SIZE, distance=Distance.COSINE),
+        )
