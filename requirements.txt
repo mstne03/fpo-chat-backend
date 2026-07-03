@@ -23,6 +23,10 @@ google-resumable-media==2.10.0
 googleapis-common-protos==1.75.0
 grpcio==1.81.1
 grpcio-status==1.81.1
+# Pin explícito: sin él pip hace backtracking (qdrant pide >=1.41 pero grpcio
+# está clavado a 1.81.1) y cae en grpcio-tools 1.58.3, que solo es sdist y
+# falla al compilar. 1.81.1 tiene wheel para cp312.
+grpcio-tools==1.81.1
 h11==0.16.0
 h2==4.3.0
 hpack==4.1.0
