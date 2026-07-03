@@ -28,6 +28,20 @@ def test_upload_rejects_missing_room():
     assert resp.status_code == 404
 
 
+def test_upload_rejects_too_large():
+    main, client = _client()
+    with patch.object(main, "_verify", return_value={"uid": "u1", "email": "a@x.com"}), \
+         patch.object(main.manager, "get_room", return_value=object()), \
+         patch.object(main, "MAX_PDF_BYTES", 10), \
+         patch("main.rag.index_pdf") as idx:
+        resp = client.post(
+            "/rooms/room-1/documents?token=ok",
+            files={"file": ("big.pdf", b"x" * 50, "application/pdf")},
+        )
+    assert resp.status_code == 413
+    idx.assert_not_called()  # se aborta antes de indexar
+
+
 def test_upload_indexes_and_returns_result():
     main, client = _client()
     room = object()

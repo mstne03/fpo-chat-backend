@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import tempfile
 from dataclasses import dataclass
 
 import firebase_admin
@@ -66,15 +67,31 @@ async def upload_document(room_id: str, token: str | None = None, file: UploadFi
         raise HTTPException(status_code=401, detail="Token inválido")
     if manager.get_room(room_id) is None:
         raise HTTPException(status_code=404, detail="Sala inexistente")
-    data = await file.read()
-    if len(data) > MAX_PDF_BYTES:
-        raise HTTPException(status_code=413, detail="PDF demasiado grande (máx. 100 MB)")
+
+    # Streaming a disco: escribe el upload por trozos a un fichero temporal en
+    # vez de cargarlo entero en RAM (evita OOM en Render free con PDFs grandes).
+    tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
+    size = 0
     try:
-        return rag.index_pdf(room_id, file.filename or "documento.pdf", data)
+        while chunk := await file.read(1024 * 1024):
+            size += len(chunk)
+            if size > MAX_PDF_BYTES:
+                raise HTTPException(status_code=413, detail="PDF demasiado grande (máx. 100 MB)")
+            tmp.write(chunk)
+        tmp.close()
+        return rag.index_pdf(room_id, file.filename or "documento.pdf", tmp.name)
+    except HTTPException:
+        raise
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     except Exception:
         raise HTTPException(status_code=502, detail="Fallo al indexar el documento")
+    finally:
+        tmp.close()
+        try:
+            os.unlink(tmp.name)
+        except OSError:
+            pass
 
 
 @app.get("/rooms/{room_id}/documents")

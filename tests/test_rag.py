@@ -21,6 +21,14 @@ def test_blank_pdf_raises():
         _extract_pages(_make_pdf(2))
 
 
+def test_extract_pages_accepts_file_path(tmp_path):
+    # Streaming a disco: _extract_pages debe leer desde una ruta, no solo bytes.
+    p = tmp_path / "blank.pdf"
+    p.write_bytes(_make_pdf(2))
+    with pytest.raises(ValueError, match="sin texto"):
+        _extract_pages(str(p))
+
+
 def test_short_text_single_chunk():
     assert _chunk("hola mundo") == ["hola mundo"]
 

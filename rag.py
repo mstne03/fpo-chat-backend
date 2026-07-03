@@ -16,8 +16,11 @@ VECTOR_SIZE = 768
 _client_cache = {}
 
 
-def _extract_pages(pdf_bytes: bytes) -> list[str]:
-    reader = PdfReader(io.BytesIO(pdf_bytes))
+def _extract_pages(pdf: bytes | str) -> list[str]:
+    # Acepta bytes o una ruta de fichero. Con ruta, PdfReader lee de disco
+    # (streaming) en vez de mantener el PDF entero en RAM -> menos memoria.
+    source = io.BytesIO(pdf) if isinstance(pdf, bytes) else pdf
+    reader = PdfReader(source)
     pages = [(page.extract_text() or "").strip() for page in reader.pages]
     if not any(pages):
         raise ValueError("PDF sin texto extraíble")
@@ -82,9 +85,10 @@ def ensure_collection() -> None:
         )
 
 
-def index_pdf(room_id: str, filename: str, pdf_bytes: bytes) -> dict:
+def index_pdf(room_id: str, filename: str, pdf: bytes | str) -> dict:
+    # pdf: bytes o ruta de fichero (el endpoint pasa una ruta temporal en disco).
     ensure_collection()
-    pages = _extract_pages(pdf_bytes)
+    pages = _extract_pages(pdf)
     doc_id = uuid.uuid4().hex
 
     texts, metas = [], []
