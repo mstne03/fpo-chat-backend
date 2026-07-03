@@ -23,9 +23,7 @@ google-resumable-media==2.10.0
 googleapis-common-protos==1.75.0
 grpcio==1.81.1
 grpcio-status==1.81.1
-# Pin explícito: sin él pip hace backtracking (qdrant pide >=1.41 pero grpcio
-# está clavado a 1.81.1) y cae en grpcio-tools 1.58.3, que solo es sdist y
-# falla al compilar. 1.81.1 tiene wheel para cp312.
+# grpcio-tools 1.81.1 exige protobuf<7.0.0; con wheel cp312 (sin compilar).
 grpcio-tools==1.81.1
 h11==0.16.0
 h2==4.3.0
@@ -37,7 +35,7 @@ hyperframe==6.1.0
 idna==3.18
 msgpack==1.2.0
 proto-plus==1.28.0
-protobuf==7.35.1
+protobuf==6.33.6
 pyasn1==0.6.3
 pyasn1_modules==0.4.2
 pycparser==3.0
