@@ -88,3 +88,25 @@ def test_index_pdf_upserts_with_room_metadata():
     assert payload["page"] == 1
     assert payload["text"] == "texto pagina uno"
     assert payload["doc_id"] == result["doc_id"]
+
+
+def test_retrieve_filters_by_room_and_maps_payload():
+    hit = MagicMock()
+    hit.payload = {"text": "respuesta", "filename": "manual.pdf", "page": 3}
+    fake_q = MagicMock()
+    fake_q.query_points.return_value.points = [hit]
+    with patch("rag._embed", return_value=[[0.0] * 768]), \
+         patch("rag._qdrant", return_value=fake_q):
+        from rag import retrieve
+        chunks = retrieve("room-1", "¿qué dice?", k=5)
+
+    assert chunks == [{"text": "respuesta", "filename": "manual.pdf", "page": 3}]
+    # el filtro por room_id se aplicó
+    called = fake_q.query_points.call_args
+    assert called.kwargs["query_filter"] is not None
+
+
+def test_retrieve_degrades_to_empty_on_error():
+    with patch("rag._embed", side_effect=RuntimeError("gemini caído")):
+        from rag import retrieve
+        assert retrieve("room-1", "x") == []

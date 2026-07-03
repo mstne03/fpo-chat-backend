@@ -5,7 +5,7 @@ import uuid
 from pypdf import PdfReader
 from google import genai
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, VectorParams, PointStruct
+from qdrant_client.models import Distance, VectorParams, PointStruct, FieldCondition, Filter, MatchValue
 
 EMBED_MODEL = "text-embedding-004"
 COLLECTION = "fpo_documents"
@@ -96,3 +96,27 @@ def index_pdf(room_id: str, filename: str, pdf_bytes: bytes) -> dict:
     ]
     _qdrant().upsert(collection_name=COLLECTION, points=points)
     return {"doc_id": doc_id, "filename": filename, "chunks": len(points)}
+
+
+def retrieve(room_id: str, query: str, k: int = 5) -> list[dict]:
+    try:
+        vector = _embed([query])[0]
+        room_filter = Filter(
+            must=[FieldCondition(key="room_id", match=MatchValue(value=room_id))]
+        )
+        res = _qdrant().query_points(
+            collection_name=COLLECTION,
+            query=vector,
+            query_filter=room_filter,
+            limit=k,
+        )
+        return [
+            {
+                "text": p.payload["text"],
+                "filename": p.payload["filename"],
+                "page": p.payload["page"],
+            }
+            for p in res.points
+        ]
+    except Exception:
+        return []
