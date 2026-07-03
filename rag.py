@@ -24,15 +24,27 @@ def _extract_pages(pdf_bytes: bytes) -> list[str]:
     return pages
 
 
+# Jina limita el nº de inputs y tokens por request; trocear en lotes evita
+# rechazos y cuelgues con PDFs grandes (miles de chunks).
+EMBED_BATCH = 100
+
+
 def _embed(texts: list[str]) -> list[list[float]]:
-    resp = requests.post(
-        JINA_URL,
-        headers={"Authorization": f"Bearer {os.environ['JINA_API_KEY']}"},
-        json={"model": EMBED_MODEL, "dimensions": VECTOR_SIZE, "input": texts},
-        timeout=30,
-    )
-    resp.raise_for_status()
-    return [item["embedding"] for item in resp.json()["data"]]
+    if not texts:
+        return []
+    headers = {"Authorization": f"Bearer {os.environ['JINA_API_KEY']}"}
+    vectors: list[list[float]] = []
+    for i in range(0, len(texts), EMBED_BATCH):
+        batch = texts[i:i + EMBED_BATCH]
+        resp = requests.post(
+            JINA_URL,
+            headers=headers,
+            json={"model": EMBED_MODEL, "dimensions": VECTOR_SIZE, "input": batch},
+            timeout=60,
+        )
+        resp.raise_for_status()
+        vectors.extend(item["embedding"] for item in resp.json()["data"])
+    return vectors
 
 
 def _chunk(text: str, size: int = 1000, overlap: int = 150) -> list[str]:

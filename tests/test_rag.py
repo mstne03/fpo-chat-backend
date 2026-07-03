@@ -57,6 +57,31 @@ def test_embed_calls_jina_and_returns_vectors(monkeypatch):
     assert post.call_args.kwargs["headers"]["Authorization"] == "Bearer test-key"
 
 
+def test_embed_batches_large_input(monkeypatch):
+    # Con muchos chunks, _embed trocea en lotes de EMBED_BATCH y concatena.
+    monkeypatch.setenv("JINA_API_KEY", "test-key")
+    from rag import EMBED_BATCH, _embed
+
+    n = EMBED_BATCH * 2 + 5  # obliga a 3 lotes
+    texts = [f"t{i}" for i in range(n)]
+
+    def fake_post(*args, **kwargs):
+        batch = kwargs["json"]["input"]
+        r = MagicMock()
+        r.raise_for_status.return_value = None
+        r.json.return_value = {"data": [{"embedding": [float(len(t))]} for t in batch]}
+        return r
+
+    with patch("rag.requests.post", side_effect=fake_post) as post:
+        vectors = _embed(texts)
+
+    assert len(vectors) == n           # todos los vectores, en orden
+    assert post.call_count == 3        # 3 lotes
+    # ningún lote supera EMBED_BATCH
+    for call in post.call_args_list:
+        assert len(call.kwargs["json"]["input"]) <= EMBED_BATCH
+
+
 def test_ensure_collection_creates_when_missing():
     fake = MagicMock()
     fake.collection_exists.return_value = False
