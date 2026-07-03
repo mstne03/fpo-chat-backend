@@ -135,3 +135,12 @@ def test_retrieve_degrades_to_empty_on_error():
     with patch("rag._embed", side_effect=RuntimeError("embeddings caídos")):
         from rag import retrieve
         assert retrieve("room-1", "x") == []
+
+
+def test_list_documents_degrades_to_empty_on_error():
+    # Deploy fresco: la colección aún no existe, scroll lanza -> devolver [] (no 500).
+    fake_q = MagicMock()
+    fake_q.scroll.side_effect = RuntimeError("collection not found")
+    with patch("rag._qdrant", return_value=fake_q):
+        from rag import list_documents
+        assert list_documents("room-1") == []
