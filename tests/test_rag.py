@@ -1,6 +1,7 @@
 import io
 import pytest
 from pypdf import PdfWriter
+from unittest.mock import MagicMock, patch
 
 from rag import _chunk, _extract_pages
 
@@ -37,3 +38,13 @@ def test_long_text_splits_with_overlap():
     assert all(len(c) <= 1000 for c in chunks)
     # el segundo chunk arranca 150 chars antes del final del primero
     assert chunks[1][:150] == chunks[0][-150:]
+
+
+def test_embed_calls_gemini_and_returns_vectors():
+    fake_resp = MagicMock()
+    fake_resp.embeddings = [MagicMock(values=[0.1, 0.2]), MagicMock(values=[0.3, 0.4])]
+    with patch("rag._gemini_client") as get_client:
+        get_client.return_value.models.embed_content.return_value = fake_resp
+        from rag import _embed
+        vectors = _embed(["uno", "dos"])
+    assert vectors == [[0.1, 0.2], [0.3, 0.4]]
