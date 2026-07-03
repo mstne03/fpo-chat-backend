@@ -100,10 +100,11 @@ def test_embed_batches_large_input(monkeypatch):
         assert len(call.kwargs["json"]["texts"]) <= EMBED_BATCH
 
 
-def _collection_with_size(size):
-    # Simula la respuesta de get_collection con una dimensión de vector dada.
+def _collection_with_size(size, has_room_id_index=True):
+    # Simula la respuesta de get_collection con dimensión e índices de payload.
     info = MagicMock()
     info.config.params.vectors.size = size
+    info.payload_schema = {"room_id": object()} if has_room_id_index else {}
     return info
 
 
@@ -113,19 +114,21 @@ def test_ensure_collection_creates_when_missing():
     with patch("rag._qdrant", return_value=fake):
         from rag import ensure_collection, VECTOR_SIZE
         ensure_collection()
-    fake.create_collection.assert_called_once()
-    assert fake.create_collection.call_args.kwargs["vectors_config"].size == VECTOR_SIZE
+    fake.recreate_collection.assert_called_once()
+    assert fake.recreate_collection.call_args.kwargs["vectors_config"].size == VECTOR_SIZE
+    # crea el índice de payload sobre room_id (sin él, el filtro por sala no matchea)
+    fake.create_payload_index.assert_called_once()
+    assert fake.create_payload_index.call_args.kwargs["field_name"] == "room_id"
 
 
-def test_ensure_collection_skips_when_dim_matches():
+def test_ensure_collection_skips_when_dim_and_index_ok():
     from rag import VECTOR_SIZE
     fake = MagicMock()
     fake.collection_exists.return_value = True
-    fake.get_collection.return_value = _collection_with_size(VECTOR_SIZE)
+    fake.get_collection.return_value = _collection_with_size(VECTOR_SIZE, has_room_id_index=True)
     with patch("rag._qdrant", return_value=fake):
         from rag import ensure_collection
         ensure_collection()
-    fake.create_collection.assert_not_called()
     fake.recreate_collection.assert_not_called()
 
 
@@ -133,13 +136,26 @@ def test_ensure_collection_recreates_when_dim_mismatch():
     from rag import VECTOR_SIZE
     fake = MagicMock()
     fake.collection_exists.return_value = True
-    fake.get_collection.return_value = _collection_with_size(VECTOR_SIZE - 1)  # dim vieja
+    fake.get_collection.return_value = _collection_with_size(VECTOR_SIZE - 1, has_room_id_index=True)
     with patch("rag._qdrant", return_value=fake):
         from rag import ensure_collection
         ensure_collection()
-    # recrea con la dimensión nueva (borra + crea)
     fake.recreate_collection.assert_called_once()
     assert fake.recreate_collection.call_args.kwargs["vectors_config"].size == VECTOR_SIZE
+
+
+def test_ensure_collection_recreates_when_room_id_index_missing():
+    # Colección con dim correcta pero SIN índice de room_id -> recrear (es la
+    # causa de que el filtro por sala devolviera 0).
+    from rag import VECTOR_SIZE
+    fake = MagicMock()
+    fake.collection_exists.return_value = True
+    fake.get_collection.return_value = _collection_with_size(VECTOR_SIZE, has_room_id_index=False)
+    with patch("rag._qdrant", return_value=fake):
+        from rag import ensure_collection
+        ensure_collection()
+    fake.recreate_collection.assert_called_once()
+    fake.create_payload_index.assert_called_once()
 
 
 def test_index_pdf_upserts_with_room_metadata():

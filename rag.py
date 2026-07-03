@@ -89,17 +89,28 @@ def _qdrant() -> QdrantClient:
     return _client_cache["q"]
 
 
+def _create_collection(client) -> None:
+    params = VectorParams(size=VECTOR_SIZE, distance=Distance.COSINE)
+    client.recreate_collection(collection_name=COLLECTION, vectors_config=params)
+    # Índice de payload sobre room_id: sin él, Qdrant no filtra de forma fiable
+    # por sala y retrieve/list_documents devuelven 0 aunque los puntos existan.
+    client.create_payload_index(
+        collection_name=COLLECTION, field_name="room_id", field_schema="keyword"
+    )
+
+
 def ensure_collection() -> None:
     client = _qdrant()
-    params = VectorParams(size=VECTOR_SIZE, distance=Distance.COSINE)
     if not client.collection_exists(COLLECTION):
-        client.create_collection(collection_name=COLLECTION, vectors_config=params)
+        _create_collection(client)
         return
-    # Si la colección existe con otra dimensión (p.ej. tras cambiar de proveedor
-    # de embeddings), recrearla; si no, los upserts fallarían por mismatch.
-    current = client.get_collection(COLLECTION).config.params.vectors.size
-    if current != VECTOR_SIZE:
-        client.recreate_collection(collection_name=COLLECTION, vectors_config=params)
+    # Recrear si la dimensión cambió (cambio de proveedor de embeddings) o si
+    # falta el índice de room_id (colecciones antiguas creadas sin él).
+    info = client.get_collection(COLLECTION)
+    dim = info.config.params.vectors.size
+    has_index = "room_id" in (info.payload_schema or {})
+    if dim != VECTOR_SIZE or not has_index:
+        _create_collection(client)
 
 
 def index_pdf(room_id: str, filename: str, pdf: bytes | str) -> dict:
