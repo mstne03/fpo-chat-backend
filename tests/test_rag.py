@@ -40,14 +40,21 @@ def test_long_text_splits_with_overlap():
     assert chunks[1][:150] == chunks[0][-150:]
 
 
-def test_embed_calls_gemini_and_returns_vectors():
+def test_embed_calls_jina_and_returns_vectors(monkeypatch):
+    monkeypatch.setenv("JINA_API_KEY", "test-key")
     fake_resp = MagicMock()
-    fake_resp.embeddings = [MagicMock(values=[0.1, 0.2]), MagicMock(values=[0.3, 0.4])]
-    with patch("rag._gemini_client") as get_client:
-        get_client.return_value.models.embed_content.return_value = fake_resp
+    fake_resp.json.return_value = {
+        "data": [{"embedding": [0.1, 0.2]}, {"embedding": [0.3, 0.4]}]
+    }
+    fake_resp.raise_for_status.return_value = None
+    with patch("rag.requests.post", return_value=fake_resp) as post:
         from rag import _embed
         vectors = _embed(["uno", "dos"])
     assert vectors == [[0.1, 0.2], [0.3, 0.4]]
+    # envía los textos y la API key en la petición
+    body = post.call_args.kwargs["json"]
+    assert body["input"] == ["uno", "dos"]
+    assert post.call_args.kwargs["headers"]["Authorization"] == "Bearer test-key"
 
 
 def test_ensure_collection_creates_when_missing():
@@ -107,6 +114,6 @@ def test_retrieve_filters_by_room_and_maps_payload():
 
 
 def test_retrieve_degrades_to_empty_on_error():
-    with patch("rag._embed", side_effect=RuntimeError("gemini caído")):
+    with patch("rag._embed", side_effect=RuntimeError("embeddings caídos")):
         from rag import retrieve
         assert retrieve("room-1", "x") == []
