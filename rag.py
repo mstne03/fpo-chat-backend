@@ -7,11 +7,13 @@ from pypdf import PdfReader
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct, FieldCondition, Filter, MatchValue
 
-# Embeddings vía Cohere (embed-v4.0), 768 dims para encajar con VECTOR_SIZE.
+# Embeddings vía Cohere (embed-v4.0). embed-v4.0 solo admite output_dimension
+# en [256, 512, 1024, 1536]; usamos 1024. La colección Qdrant debe crearse con
+# esta misma dimensión (ver ensure_collection).
 COHERE_URL = "https://api.cohere.com/v2/embed"
 EMBED_MODEL = "embed-v4.0"
 COLLECTION = "fpo_documents"
-VECTOR_SIZE = 768
+VECTOR_SIZE = 1024
 
 _client_cache = {}
 
@@ -89,11 +91,15 @@ def _qdrant() -> QdrantClient:
 
 def ensure_collection() -> None:
     client = _qdrant()
+    params = VectorParams(size=VECTOR_SIZE, distance=Distance.COSINE)
     if not client.collection_exists(COLLECTION):
-        client.create_collection(
-            collection_name=COLLECTION,
-            vectors_config=VectorParams(size=VECTOR_SIZE, distance=Distance.COSINE),
-        )
+        client.create_collection(collection_name=COLLECTION, vectors_config=params)
+        return
+    # Si la colección existe con otra dimensión (p.ej. tras cambiar de proveedor
+    # de embeddings), recrearla; si no, los upserts fallarían por mismatch.
+    current = client.get_collection(COLLECTION).config.params.vectors.size
+    if current != VECTOR_SIZE:
+        client.recreate_collection(collection_name=COLLECTION, vectors_config=params)
 
 
 def index_pdf(room_id: str, filename: str, pdf: bytes | str) -> dict:

@@ -100,22 +100,46 @@ def test_embed_batches_large_input(monkeypatch):
         assert len(call.kwargs["json"]["texts"]) <= EMBED_BATCH
 
 
+def _collection_with_size(size):
+    # Simula la respuesta de get_collection con una dimensión de vector dada.
+    info = MagicMock()
+    info.config.params.vectors.size = size
+    return info
+
+
 def test_ensure_collection_creates_when_missing():
     fake = MagicMock()
     fake.collection_exists.return_value = False
     with patch("rag._qdrant", return_value=fake):
-        from rag import ensure_collection
+        from rag import ensure_collection, VECTOR_SIZE
         ensure_collection()
     fake.create_collection.assert_called_once()
+    assert fake.create_collection.call_args.kwargs["vectors_config"].size == VECTOR_SIZE
 
 
-def test_ensure_collection_skips_when_present():
+def test_ensure_collection_skips_when_dim_matches():
+    from rag import VECTOR_SIZE
     fake = MagicMock()
     fake.collection_exists.return_value = True
+    fake.get_collection.return_value = _collection_with_size(VECTOR_SIZE)
     with patch("rag._qdrant", return_value=fake):
         from rag import ensure_collection
         ensure_collection()
     fake.create_collection.assert_not_called()
+    fake.recreate_collection.assert_not_called()
+
+
+def test_ensure_collection_recreates_when_dim_mismatch():
+    from rag import VECTOR_SIZE
+    fake = MagicMock()
+    fake.collection_exists.return_value = True
+    fake.get_collection.return_value = _collection_with_size(VECTOR_SIZE - 1)  # dim vieja
+    with patch("rag._qdrant", return_value=fake):
+        from rag import ensure_collection
+        ensure_collection()
+    # recrea con la dimensión nueva (borra + crea)
+    fake.recreate_collection.assert_called_once()
+    assert fake.recreate_collection.call_args.kwargs["vectors_config"].size == VECTOR_SIZE
 
 
 def test_index_pdf_upserts_with_room_metadata():
