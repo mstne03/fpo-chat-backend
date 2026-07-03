@@ -55,7 +55,9 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-MAX_PDF_BYTES = 20 * 1024 * 1024
+# 100 MB: margen amplio para PDFs grandes. Ojo: el PDF se lee entero en
+# memoria; en Render free (512 MB RAM) subir mucho más arriesga OOM.
+MAX_PDF_BYTES = 100 * 1024 * 1024
 
 
 @app.post("/rooms/{room_id}/documents")
@@ -66,7 +68,7 @@ async def upload_document(room_id: str, token: str | None = None, file: UploadFi
         raise HTTPException(status_code=404, detail="Sala inexistente")
     data = await file.read()
     if len(data) > MAX_PDF_BYTES:
-        raise HTTPException(status_code=413, detail="PDF demasiado grande (máx. 20 MB)")
+        raise HTTPException(status_code=413, detail="PDF demasiado grande (máx. 100 MB)")
     try:
         return rag.index_pdf(room_id, file.filename or "documento.pdf", data)
     except ValueError as e:
