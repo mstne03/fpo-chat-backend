@@ -66,3 +66,25 @@ def test_ensure_collection_skips_when_present():
         from rag import ensure_collection
         ensure_collection()
     fake.create_collection.assert_not_called()
+
+
+def test_index_pdf_upserts_with_room_metadata():
+    fake_q = MagicMock()
+    fake_q.collection_exists.return_value = True
+    with patch("rag._extract_pages", return_value=["texto pagina uno"]), \
+         patch("rag._embed", return_value=[[0.0] * 768]), \
+         patch("rag._qdrant", return_value=fake_q):
+        from rag import index_pdf
+        result = index_pdf("room-1", "manual.pdf", b"%PDF-fake")
+
+    assert result["filename"] == "manual.pdf"
+    assert result["chunks"] == 1
+    assert "doc_id" in result
+    # inspeccionar el payload del punto subido
+    points = fake_q.upsert.call_args.kwargs["points"]
+    payload = points[0].payload
+    assert payload["room_id"] == "room-1"
+    assert payload["filename"] == "manual.pdf"
+    assert payload["page"] == 1
+    assert payload["text"] == "texto pagina uno"
+    assert payload["doc_id"] == result["doc_id"]
