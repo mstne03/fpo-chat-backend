@@ -8,9 +8,20 @@ services:
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
     envVars:
+      # Fija Python 3.12: 3.14 (default nuevo de Render) no tiene wheels para
+      # grpcio-tools (dependencia de qdrant-client) y falla al compilar.
+      - key: PYTHON_VERSION
+        value: "3.12.8"
       # Pega aquí el contenido COMPLETO de service_account.json (en una sola línea).
       - key: FIREBASE_CREDENTIALS_JSON
         sync: false
       # URL del frontend desplegado (coma-separado si hay varias).
       - key: ALLOWED_ORIGINS
+        sync: false
+      # RAG: Qdrant Cloud + embeddings Jina. Rellenar en el dashboard de Render.
+      - key: QDRANT_URL
+        sync: false
+      - key: QDRANT_API_KEY
+        sync: false
+      - key: JINA_API_KEY
         sync: false
