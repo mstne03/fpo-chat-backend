@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 import tempfile
+import traceback
 from dataclasses import dataclass
 
 import firebase_admin
@@ -79,13 +80,21 @@ async def upload_document(room_id: str, token: str | None = None, file: UploadFi
                 raise HTTPException(status_code=413, detail="PDF demasiado grande (máx. 100 MB)")
             tmp.write(chunk)
         tmp.close()
-        return rag.index_pdf(room_id, file.filename or "documento.pdf", tmp.name)
+        # index_pdf es síncrono y bloqueante (red a Jina, Qdrant). Ejecutarlo en
+        # un hilo evita bloquear el event loop del único worker -> Render no mata
+        # el proceso por health-check fallido (causa del 502 Bad Gateway).
+        return await asyncio.to_thread(
+            rag.index_pdf, room_id, file.filename or "documento.pdf", tmp.name
+        )
     except HTTPException:
         raise
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
-    except Exception:
-        raise HTTPException(status_code=502, detail="Fallo al indexar el documento")
+    except Exception as e:
+        # Loggea la causa real: sin esto el 502 no dice qué capa falló
+        # (Jina, Qdrant, extracción...) y el error queda invisible en Render.
+        traceback.print_exc()
+        raise HTTPException(status_code=502, detail=f"Fallo al indexar el documento: {e}")
     finally:
         tmp.close()
         try:
