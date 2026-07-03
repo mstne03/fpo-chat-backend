@@ -7,9 +7,9 @@ from pypdf import PdfReader
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct, FieldCondition, Filter, MatchValue
 
-# Embeddings vía Jina AI (jina-embeddings-v3), 768 dims para encajar con VECTOR_SIZE.
-JINA_URL = "https://api.jina.ai/v1/embeddings"
-EMBED_MODEL = "jina-embeddings-v3"
+# Embeddings vía Cohere (embed-v4.0), 768 dims para encajar con VECTOR_SIZE.
+COHERE_URL = "https://api.cohere.com/v2/embed"
+EMBED_MODEL = "embed-v4.0"
 COLLECTION = "fpo_documents"
 VECTOR_SIZE = 768
 
@@ -27,29 +27,37 @@ def _extract_pages(pdf: bytes | str) -> list[str]:
     return pages
 
 
-# Jina limita el nº de inputs y tokens por request; trocear en lotes evita
+# Cohere limita el nº de textos por request (96); trocear en lotes evita
 # rechazos y cuelgues con PDFs grandes (miles de chunks).
-EMBED_BATCH = 100
+EMBED_BATCH = 96
 
 
-def _embed(texts: list[str]) -> list[list[float]]:
+def _embed(texts: list[str], input_type: str = "search_document") -> list[list[float]]:
+    # input_type: "search_document" al indexar, "search_query" al recuperar
+    # (embeddings asimétricos de Cohere -> mejor recuperación).
     if not texts:
         return []
-    headers = {"Authorization": f"Bearer {os.environ['JINA_API_KEY']}"}
+    headers = {"Authorization": f"Bearer {os.environ['COHERE_API_KEY']}"}
     vectors: list[list[float]] = []
     for i in range(0, len(texts), EMBED_BATCH):
         batch = texts[i:i + EMBED_BATCH]
         resp = requests.post(
-            JINA_URL,
+            COHERE_URL,
             headers=headers,
-            json={"model": EMBED_MODEL, "dimensions": VECTOR_SIZE, "input": batch},
+            json={
+                "model": EMBED_MODEL,
+                "input_type": input_type,
+                "embedding_types": ["float"],
+                "output_dimension": VECTOR_SIZE,
+                "texts": batch,
+            },
             timeout=60,
         )
         if not resp.ok:
-            # Jina explica el motivo (key inválida, saldo agotado...) en el cuerpo;
-            # sin esto el 403 queda opaco.
-            raise RuntimeError(f"Jina {resp.status_code}: {resp.text[:300]}")
-        vectors.extend(item["embedding"] for item in resp.json()["data"])
+            # Cohere explica el motivo (key inválida, cuota...) en el cuerpo;
+            # sin esto el error queda opaco.
+            raise RuntimeError(f"Cohere {resp.status_code}: {resp.text[:300]}")
+        vectors.extend(resp.json()["embeddings"]["float"])
     return vectors
 
 
@@ -149,7 +157,7 @@ def list_documents(room_id: str) -> list[dict]:
 
 def retrieve(room_id: str, query: str, k: int = 5) -> list[dict]:
     try:
-        vector = _embed([query])[0]
+        vector = _embed([query], input_type="search_query")[0]
         room_filter = Filter(
             must=[FieldCondition(key="room_id", match=MatchValue(value=room_id))]
         )

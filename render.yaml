@@ -23,5 +23,5 @@ services:
         sync: false
       - key: QDRANT_API_KEY
         sync: false
-      - key: JINA_API_KEY
+      - key: COHERE_API_KEY
         sync: false

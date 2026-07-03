@@ -80,7 +80,7 @@ async def upload_document(room_id: str, token: str | None = None, file: UploadFi
                 raise HTTPException(status_code=413, detail="PDF demasiado grande (máx. 100 MB)")
             tmp.write(chunk)
         tmp.close()
-        # index_pdf es síncrono y bloqueante (red a Jina, Qdrant). Ejecutarlo en
+        # index_pdf es síncrono y bloqueante (red a Cohere, Qdrant). Ejecutarlo en
         # un hilo evita bloquear el event loop del único worker -> Render no mata
         # el proceso por health-check fallido (causa del 502 Bad Gateway).
         return await asyncio.to_thread(
@@ -92,7 +92,7 @@ async def upload_document(room_id: str, token: str | None = None, file: UploadFi
         raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
         # Loggea la causa real: sin esto el 502 no dice qué capa falló
-        # (Jina, Qdrant, extracción...) y el error queda invisible en Render.
+        # (Cohere, Qdrant, extracción...) y el error queda invisible en Render.
         traceback.print_exc()
         raise HTTPException(status_code=502, detail=f"Fallo al indexar el documento: {e}")
     finally:
