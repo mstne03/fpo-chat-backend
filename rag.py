@@ -45,7 +45,10 @@ def _embed(texts: list[str]) -> list[list[float]]:
             json={"model": EMBED_MODEL, "dimensions": VECTOR_SIZE, "input": batch},
             timeout=60,
         )
-        resp.raise_for_status()
+        if not resp.ok:
+            # Jina explica el motivo (key inválida, saldo agotado...) en el cuerpo;
+            # sin esto el 403 queda opaco.
+            raise RuntimeError(f"Jina {resp.status_code}: {resp.text[:300]}")
         vectors.extend(item["embedding"] for item in resp.json()["data"])
     return vectors
 
